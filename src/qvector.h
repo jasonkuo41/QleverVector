@@ -134,7 +134,7 @@ struct qvecref {
     void* (*begin) (qvector a);
     void* (*end) (qvector a);
     void (*clear)(qvector *a);
-    void (*copy) (qvector *a, qvector b);
+    bool (*copy) (qvector *a, qvector b);
 };
 
 // Control global variable of quick ref.
