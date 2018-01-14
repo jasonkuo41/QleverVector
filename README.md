@@ -45,6 +45,13 @@ int main (){
 
 *Note: In newer version of qvector, initializer for basic types are no longer neccessary, as it will check automatically for initialization when action is performed.*
 
+## Amazingly Fast
+As for v1.0.3-proto, test results show that C++ Vector and qVector has an almost equal runtime during each operations (±3%) , although more opitimization can be done even more drastically (which is not a primarily target for v1.X.X), we think that this is already a great result we could except.
+
+*Side notes: v1.0.3-proto uses a capacity expansion method that v1.0.2b does not have. This test is performed using the same capacity expansion method as C++ Vector.*
+
+![](https://i.imgur.com/XdGJ4Cb.png)
+
 ## Example and Tutorial
 Documents are still WIP, a documention for fully control over and using all the potential of qVector is writing asap. 
 
