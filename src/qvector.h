@@ -5,11 +5,21 @@
 #include <stdlib.h>
 #include <memory.h>
 
-//
-
-// CONFIGURATION
-// Warning: Changing any of the default value will result in error if a code requires QuickC Standard Lib
-// The definition here controls how the vector will behavior, it is best to read documents before changing settings //
+#define qvec_version 1.0.3.2
+//.1 = proto .2 = beta x.x.x = release
+/**
+************************************************************************************************************************
+*                                 Qlever Vector C - A C++ Vector implementation for ANSI C                             *
+*                                 ---- Written by jasonkuo41 ----- Version 1.0.3 Beta ----                             *
+*                     Disclaimer: Beta releases are expected to have bugs, report it on github if you found one!       *
+*                                                                                                                      *
+*                                  Github link: https://github.com/jasonkuo41/QleverVector                             *
+************************************************************************************************************************
+*                                                     CONFIGURATION                                                    *
+************************************************************************************************************************
+* > Warning: Changing any of the default value will result in error if a code requires QleverC Standard Lib            *
+* > The definition here controls how the vector will behavior, it is best to read documents before changing settings   *
+************************************************************************************************************************/
 
     #define ENABLE_NICK_NAMES 1 // enable nicknames like _db or typeof for easier use
     #define ENABLE_UNSAFE_USE 0 // enable use of "vector" instead of "qvector", can be hazard if you don't know the conflicts
@@ -18,18 +28,17 @@
     #define ENABLE_AUTO_INIT 1 // enable auto initialize if forgot to initialize a vector
     #define ENABLE_USE_OF_STRING 1
 
-    #define WARNING_NOT_USING_C99 1 // changing this will not hurt QuickC Standard Lib, i.e. Change it at your desire
+    #define WARNING_NOT_USING_C99 1 // changing this will not hurt QleverC Standard Lib, i.e. Change it at your desire
     #define DISABLE_USE_IN_CPP 1
     #define DEBUG_BUILD 0
 
-    // AWAIT FOR IMPLEMENTATION
-    // #define ENABLE_GLOBAL_QUICKREF 1 // enable use of global quick reference such as _int.push_back, disable if memory is an tight issue
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/************************************************************************************************************************
+ *                            Code Starts here, don't modify it if you don't know what you are doing                    *
+ ************************************************************************************************************************/
 
 #ifdef __cplusplus
     #if DISABLE_USE_IN_CPP > 0
-        #error "Qvector / QuickC does not support C++, change DISABLE_USE_IN_CPP to 0 if you force to use it"
+        #error "Qvector / QleverC does not support C++, change DISABLE_USE_IN_CPP to 0 if you force to use it"
     #endif
 #endif
 
@@ -52,8 +61,8 @@
     #define bool __int16
     #define true 1
     #define false 0
-    #if WARNING_NOT_USING_C99 > 0
-        //#warning "suggested to use std+=c99 (or above) for qvector"
+    #if WARNING_NOT_USING_C99 > 0 && USING_GCC_COMPILER > 0
+        #warning "suggested to use std+=c99 (or above) for qvector"
     #endif
 #endif // USE_OF_SELF_IMPLEMENTED_BOOL
 
@@ -69,6 +78,14 @@
 
 typedef struct qvector qvector;
 
+typedef struct {
+    unsigned int pow;
+    size_t times;
+    size_t add;
+} qvec_cap_growth_algro;
+
+qvec_cap_growth_algro set_qvec_growth = {1,2,1};
+
 typedef enum {
     setInt = -1,
     setChar = -2,
@@ -80,39 +97,38 @@ typedef enum {
 vec_type _type;
 
 struct qvector {
-    int *irr;
-    unsigned int typesize;
+    size_t *irr;
+    unsigned short typesize;
     vec_type type;
-    int size;
-    int capacity;
-    short emptyVec;
+    size_t size;
+    size_t capacity;
     short isInit;
 };
 
 struct vecint {
-    int (*get) (qvector a, int i);
-    bool (*push_back) (qvector *a, int i);
-    void (*insert) (qvector *a,int pos, int loc[] ,int len);
+    int (*get) (qvector a, size_t i);
+    bool (*push_back) (qvector *a, size_t i);
+    void (*insert) (qvector *a, size_t pos, int loc[] ,size_t len);
 };
 
 struct vecchar {
-    char (*get) (qvector a, int i);
+    char (*get) (qvector a, size_t i);
     bool (*push_back) (qvector *a, char i);
-    void (*insert) (qvector *a,int pos, char loc[] ,int len);
+    void (*insert) (qvector *a,size_t pos, char loc[] ,size_t len);
 };
 
 struct vecdouble {
-    double (*get) (qvector a, int i);
+    double (*get) (qvector a, size_t i);
     bool (*push_back) (qvector *a, double i);
-    void (*insert) (qvector *a,int pos, double loc[] ,int len);
+    void (*insert) (qvector *a,size_t pos, double loc[] ,size_t len);
 };
 
 struct vecstring {
     void (*cat) (qvector a, char i[]);
     void (*toChar) (qvector a, char i[]);
-    bool (*add) (qvector *a, char i[],int len);
-    bool (*push_back) (qvector *a, char i[],int len);
-    void (*insert) (qvector *a,int pos, char loc[] ,int len);
+    bool (*add) (qvector *a, char i[],size_t len);
+    bool (*push_back) (qvector *a, char i[],size_t len);
+    void (*insert) (qvector *a,size_t pos, char loc[] ,size_t len);
     void (*print) (qvector a);
 };
 
@@ -121,19 +137,19 @@ struct qvecref {
     struct vecchar _char;
     struct vecstring _string;
     struct vecdouble _double;
-    qvector (*get) (qvector a, int i);
-    void (*getAny) (qvector a, void *b, int i);
+    qvector (*get) (qvector a, size_t i);
+    void (*getAny) (qvector a, void *b, size_t i);
     bool (*push_back) (qvector *a, qvector i);
 
-    bool (*resize) (qvector *a, int i);
+    bool (*resize) (qvector *a, size_t i);
     bool (*pop_back) (qvector *a);
     bool (*push_backAny) (qvector *a, void *i);
     bool (*pop_front) (qvector *a);
-    void (*erase) (qvector *a, int wstart, int wend);
+    void (*erase) (qvector *a, size_t wstart, size_t wend);
     short (*empty) (qvector a);
     void* (*begin) (qvector a);
     void* (*end) (qvector a);
-    void (*clear)(qvector *a);
+    bool (*clear)(qvector *a);
     bool (*copy) (qvector *a, qvector b);
 };
 
@@ -148,35 +164,35 @@ struct vecstring _String;
 
 //////////////////////////////////////////////
 
-int getInt (qvector a, int i);
-char getChar (qvector a, int i);
-double getDouble (qvector a, int i);
-void getAny (qvector a, void *b, int i);
-qvector vget (qvector a, int i);
+int getInt (qvector a, size_t i);
+char getChar (qvector a, size_t i);
+double getDouble (qvector a, size_t i);
+void getAny (qvector a, void *b, size_t i);
+qvector vget (qvector a, size_t i);
 
 void toChar (qvector a, char i[]);
 void printString (qvector a);
 
-bool push_backInt (qvector *a, int i);
+bool push_backInt (qvector *a, size_t i);
 bool push_backChar (qvector *a, char i);
-bool push_backString (qvector *a, char i[],int len);
+bool push_backString (qvector *a, char i[],size_t len);
 bool push_backDouble (qvector *a, double i);
 bool push_backVec (qvector *a, qvector i);
 bool push_backAny (qvector *a, void *i);
 
-void insertInt (qvector *a,int pos, int loc[] ,int len);
-void insertChar (qvector *a,int pos, char loc[] ,int len);
-void insertDouble (qvector *a,int pos, double loc[] ,int len);
+void insertInt (qvector *a, size_t pos, int loc[] ,size_t len);
+void insertChar (qvector *a,size_t pos, char loc[] ,size_t len);
+void insertDouble (qvector *a,size_t pos, double loc[] ,size_t len);
 
-bool resizeVec (qvector *a, int i);
+bool resizeVec (qvector *a, size_t i);
 bool pop_backVec (qvector *a);
 bool pop_frontVec (qvector *a);
-void eraseVec (qvector *a, int wstart, int wend);
+void eraseVec (qvector *a, size_t wstart, size_t wend);
 short emptyVec (qvector a);
 void *vecStart (qvector a);
 void *vecEnd (qvector a);
 void destroyVec (qvector a);
-void clearVec(qvector *a);
+bool clearVec(qvector *a);
 
 qvector newVector (int type);
 
@@ -185,16 +201,16 @@ void check_vector_get_init ();
 
 //////////// Await to process (Abandon?) //////////////
 
-int findVec (qvector a, int i, int type){
-    int n;
+size_t findVec (qvector a, size_t i, int type){
+    size_t n;
     for (n =0;n < a.size ; n++)
         if ( getInt(a,n) == i)
             return n+1;
     return a.size;
 }
 
-int findVec_of (qvector a, int i, int start , int ends){
-    int n;
+size_t findVec_of (qvector a, size_t i, size_t start , size_t ends){
+    size_t n;
     for (n =start;n < ends ; n++){
         printf("Find %d | %d\n", i , getInt(a,n));
         if ( getInt(a,n) == i)
@@ -224,28 +240,28 @@ void check_glb_vec_init(){
 
 #endif
 
-int getInt (qvector a, int i){
+int getInt (qvector a, size_t i){
     return *(a.irr + i*a.typesize/4);
 }
 
-int* getIrr (qvector a, int i){
+int* getIrr (qvector a, size_t i){
     return (a.irr + i*a.typesize/4);
 }
 
 
-char getChar (qvector a, int i){
+char getChar (qvector a, size_t i){
     return *(a.irr + i * a.typesize/4);
 }
 
-double getDouble (qvector a, int i){
+double getDouble (qvector a, size_t i){
     return *(a.irr + i * a.typesize/4);
 }
 
-void getAny (qvector a, void *b, int i){
+void getAny (qvector a, void *b, size_t i){
     memcpy(b, a.irr + i * a.typesize/4, a.typesize);
 }
 
-qvector vget (qvector a, int i){
+qvector vget (qvector a, size_t i){
     qvector b = newVector(a.type);
     memcpy(&b, a.irr + i * a.typesize/4, a.typesize);
     return b;
@@ -261,31 +277,33 @@ bool copyVec (qvector *a, qvector b){
         retry = resizeVec(a,b.capacity);
     }
     if (!retry) return 0;
-    int n;
+    size_t n;
     for (n = 0; n < b.size; n++)
         push_backAny(a,getIrr(b,n));
 }
 
 void toChar (qvector a, char i[]){
-    int k;
+    size_t k;
     for (k = 0; k < a.size ; k++)
         i[k] = getChar (a,k);
 }
 
 void printString (qvector a){
-    int k;
+    size_t k;
     for (k = 0; k < a.size ; k++)
         printf("%c",getChar(a,k));
 }
 
 bool push_backAny (qvector *a, void *i){
     if (a->size +1 > a->capacity) {
-        int *trypush = realloc (a->irr, a->typesize * (a->size + 1));
+        //int *trypush = realloc (a->irr, a->typesize * (a->size + 1));
+        int *trypush = realloc (a->irr, a->typesize * (a->capacity * set_qvec_growth.times + set_qvec_growth.add));
         if (!trypush)
             return 0;
         else
             a->irr = trypush;
-        a->capacity ++;
+        // a->capacity++;
+        a->capacity = a->capacity * set_qvec_growth.times + set_qvec_growth.add ;
     }
     a->size ++;
     memcpy((a->irr + (a->size -1)*a->typesize/4), i, a->typesize);
@@ -298,7 +316,7 @@ bool push_backVec (qvector *a, qvector i){
     return push_backAny (a, &hold);
 }
 
-bool push_backInt (qvector *a, int i){
+bool push_backInt (qvector *a, size_t i){
     return push_backAny (a, &i);
 }
 
@@ -317,8 +335,8 @@ bool push_backDouble (qvector *a, double i){
     return push_backAny (a, &i);
 }
 
-bool push_backString (qvector *a, char i[],int len){
-    int k,flag = 0;
+bool push_backString (qvector *a, char i[],size_t len){
+    size_t k,flag = 0;
     if (a->type == setString && a->size > 0 && getChar(*a,a->size-1) == '\0')
         pop_backVec(a);
     if (a->size + len > a->capacity) {
@@ -336,8 +354,19 @@ bool push_backString (qvector *a, char i[],int len){
     return flag;
 }
 
-void insertInt (qvector *a,int pos, int loc[] ,int len){
-    int k , m = 0;
+void insertInt (qvector *a, size_t pos, int loc[] ,size_t len){
+    size_t k , m = 0;
+    if ((len + a->size) > a->capacity)
+        resizeVec (a, a->capacity * set_qvec_growth.times + set_qvec_growth.add );
+    a->size += len;
+    for (k = a->size; k >= pos + len; k--)
+        *(a->irr + k) = *(a->irr + k - len);
+    for (k = pos; k < pos+len ; k++)
+        *(a->irr + k) = loc [m++];
+}
+
+void insertChar (qvector *a,size_t pos, char loc[] ,size_t len){
+    size_t k , m = 0;
     if ((len + a->size) > a->capacity)
         resizeVec (a, (a-> size + len));
     a->size += len;
@@ -347,19 +376,8 @@ void insertInt (qvector *a,int pos, int loc[] ,int len){
         *(a->irr + k) = loc [m++];
 }
 
-void insertChar (qvector *a,int pos, char loc[] ,int len){
-    int k , m = 0;
-    if ((len + a->size) > a->capacity)
-        resizeVec (a, (a-> size + len));
-    a->size += len;
-    for (k = a->size; k >= pos + len; k--)
-        *(a->irr + k) = *(a->irr + k - len);
-    for (k = pos; k < pos+len ; k++)
-        *(a->irr + k) = loc [m++];
-}
-
-void insertDouble (qvector *a,int pos, double loc[] ,int len){
-    int k , m = 0;
+void insertDouble (qvector *a,size_t pos, double loc[] ,size_t len){
+    size_t k , m = 0;
     if ((len + a->size) > a->capacity)
         resizeVec (a, (a-> size + len));
     a->size += len;
@@ -387,7 +405,7 @@ bool pop_frontVec (qvector *a){
         * (a->irr + n) = * (a->irr + n + 1);
 }
 
-bool resizeVec (qvector *a, int i){
+bool resizeVec (qvector *a, size_t i){
     if (i > a->capacity){
         int *trypush = realloc (a->irr,a->typesize * (a->capacity + i));
         if (!trypush)
@@ -407,8 +425,8 @@ bool resizeVec (qvector *a, int i){
     return 1;
 }
 
-void eraseVec (qvector *a, int wstart, int wend){
-    int k;
+void eraseVec (qvector *a, size_t wstart, size_t wend){
+    size_t k;
     for (k = wstart; (k + wstart - wend +1) < a->size ; k++)
         *(a->irr + k) = *(a->irr + k + (wend - wstart +1));
     a->size -= (wend - wstart +1) ;
@@ -431,8 +449,8 @@ void destroyVec (qvector a){
     free (a.irr);
 }
 
-void clearVec (qvector *a){
-    resizeVec (a, 0);
+bool clearVec (qvector *a){
+    return resizeVec (a, 0);
 }
 
 bool initVector (qvector *vec, int type){
@@ -548,7 +566,7 @@ void newLocal(){
 }
 
 void destroyLocal(){
-    int n, m;
+    size_t n, m;
     check_glb_vec_init();
     if (qvec_glb.loc.size > 0) {
         if (qvec_glb.loc_pos.size == 1){
@@ -570,7 +588,7 @@ void destroyLocal(){
 }
 
 void destroyAllLocal() {
-    int n;
+    size_t n;
     check_glb_vec_init();
     for (n = qvec_glb.loc.size - 1 ; n >= 0  ; n--){
         free((int*) getInt(qvec_glb.loc,n));
@@ -579,7 +597,7 @@ void destroyAllLocal() {
 }
 
 void destroyAll() {
-    int n;
+    size_t n;
     check_glb_vec_init();
     for (n = qvec_glb.loc.size - 1 ; n >= 0  ; n--){
         free((int*) getInt(qvec_glb.loc,n));
