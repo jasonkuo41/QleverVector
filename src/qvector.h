@@ -3,15 +3,17 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <memory.h>
+#include <string.h>
+#include <stddef.h>
 
-#define qvec_version 1.0.3.2
-//.1 = proto .2 = beta x.x.x = release
-/**
+#define qvec_version 1.1.0
+//.1 = proto .2 = beta (e.g. 1.0.4.2, .2 = beta)
+
+/** No downward compatibility with versions before 1.1.0 ***
 ************************************************************************************************************************
-*                                 Qlever Vector C - A C++ Vector implementation for ANSI C                             *
-*                                 ---- Written by jasonkuo41 ----- Version 1.0.3 Beta ----                             *
-*                     Disclaimer: Beta releases are expected to have bugs, report it on github if you found one!       *
+*                                 Qlever C Vector - A C++ Vector implementation for ANSI C                             *
+*                                 ---- Written by jasonkuo41 ----- Version 1.1.0 PREV ----                             *
+*               Disclaimer: PREV releases are expected to have minor bugs, report it on github if you found one!       *
 *                                                                                                                      *
 *                                  Github link: https://github.com/jasonkuo41/QleverVector                             *
 ************************************************************************************************************************
@@ -24,13 +26,19 @@
     #define ENABLE_NICK_NAMES 1 // enable nicknames like _db or typeof for easier use
     #define ENABLE_UNSAFE_USE 0 // enable use of "vector" instead of "qvector", can be hazard if you don't know the conflicts
     #define ENABLE_GLOBAL_NICKNAME_STRUCT 1
-    #define ENABLE_GLOBAL_CONTROL_VECTOR 1 // enable use of returning vector type functions in qvector presets, only disable if memory is an tight issue
-    #define ENABLE_AUTO_INIT 1 // enable auto initialize if forgot to initialize a vector
-    #define ENABLE_USE_OF_STRING 1
+    #define ENABLE_GLOBAL_CONTROL_VECTOR 1 // enable use of returning vector type functions in qvector presets, only \
+                                              disable if memory is an tight issue
+    #define DIRECT_USE_OF_TYPE 1 // enable macros for quicker ref, close it if your not a big fan of macro expansions
+    #define STRING_EXPAND_TO_FIT 1 // This determines if string push backs uses the same reserve method like others or not
 
-    #define WARNING_NOT_USING_C99 1 // changing this will not hurt QleverC Standard Lib, i.e. Change it at your desire
+// Following will not cause error if changed and user asking for std lib for Qlever C
+    #define WARNING_NOT_USING_C99 1
     #define DISABLE_USE_IN_CPP 1
-    #define DEBUG_BUILD 0
+    #define DEBUG_BUILD 1 // This is only debug feature if qvector has glitch and need to be checked
+
+// Following is not implemented whatsoever
+    #define ENABLE_AUTO_INIT 1 // enable auto initialize if forgot to initialize a vector
+    #define RUNTIME_SPACE_PRIORITY 0
 
 /************************************************************************************************************************
  *                            Code Starts here, don't modify it if you don't know what you are doing                    *
@@ -68,13 +76,36 @@
 
 #if ENABLE_NICK_NAMES > 0
     #define _double _db
-    #define typeof sizeof
     #define _vec vec
 #endif
 
 #if ENABLE_UNSAFE_USE > 0
     typedef struct qvector vector;
 #endif // ENABLE_UNSAFE_USE
+
+#define CAP_GROWTH (a->capacity * set_qvec_growth.times + set_qvec_growth.add)
+
+#if DIRECT_USE_OF_TYPE > 0
+
+    #define qv_get(type,qvector,location) *(type*)getIrr((qvector),(location))
+    #define qv_push_back(qvector,element,type) do {\
+                type hold = (element); \
+                push_backAny ((qvector),&hold);\
+            } while (0)
+    #define qv_push_back_element(qvector,element) push_backAny ((qvector),&(element))
+
+    #define _newVector(type) newVector(sizeof(type))
+    #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+        #define _newLocalVector(type) newLocalVector(sizeof(type))
+    #endif
+
+    #define _setMultiVec(qvector,type) setMultiVec(&(qvector),sizeof(type))
+
+#endif // DIRECT_USE_OF_TYPE
+
+#if DEBUG_BUILD > 0
+    FILE *output;
+#endif // DEBUG_BUILD
 
 typedef struct qvector qvector;
 
@@ -86,41 +117,31 @@ typedef struct {
 
 qvec_cap_growth_algro set_qvec_growth = {1,2,1};
 
-typedef enum {
-    setInt = -1,
-    setChar = -2,
-    setString = -3,
-    setDouble = -4,
-    setVec = 0,
-} vec_type;
-
-vec_type _type;
-
 struct qvector {
     size_t *irr;
-    unsigned short typesize;
-    vec_type type;
+    size_t typesize;
     size_t size;
     size_t capacity;
+    size_t glb_loc;
     short isInit;
 };
 
 struct vecint {
     int (*get) (qvector a, size_t i);
     bool (*push_back) (qvector *a, size_t i);
-    void (*insert) (qvector *a, size_t pos, int loc[] ,size_t len);
+    bool (*insert) (qvector *a, size_t pos, void *arr ,size_t len);
 };
 
 struct vecchar {
     char (*get) (qvector a, size_t i);
     bool (*push_back) (qvector *a, char i);
-    void (*insert) (qvector *a,size_t pos, char loc[] ,size_t len);
+    bool (*insert) (qvector *a, size_t pos, void *arr ,size_t len);
 };
 
 struct vecdouble {
     double (*get) (qvector a, size_t i);
     bool (*push_back) (qvector *a, double i);
-    void (*insert) (qvector *a,size_t pos, double loc[] ,size_t len);
+    bool (*insert) (qvector *a, size_t pos, void *arr ,size_t len);
 };
 
 struct vecstring {
@@ -128,7 +149,7 @@ struct vecstring {
     void (*toChar) (qvector a, char i[]);
     bool (*add) (qvector *a, char i[],size_t len);
     bool (*push_back) (qvector *a, char i[],size_t len);
-    void (*insert) (qvector *a,size_t pos, char loc[] ,size_t len);
+    bool (*insert) (qvector *a, size_t pos, void *arr ,size_t len);
     void (*print) (qvector a);
 };
 
@@ -146,11 +167,13 @@ struct qvecref {
     bool (*push_backAny) (qvector *a, void *i);
     bool (*pop_front) (qvector *a);
     void (*erase) (qvector *a, size_t wstart, size_t wend);
-    short (*empty) (qvector a);
+    bool (*empty) (qvector a);
     void* (*begin) (qvector a);
     void* (*end) (qvector a);
     bool (*clear)(qvector *a);
     bool (*copy) (qvector *a, qvector b);
+    bool (*insertIrr) (qvector *a, size_t pos, void *start, void *ends);
+    bool (*insert) (qvector *a, size_t pos, void *arr ,size_t len);
 };
 
 // Control global variable of quick ref.
@@ -180,106 +203,168 @@ bool push_backDouble (qvector *a, double i);
 bool push_backVec (qvector *a, qvector i);
 bool push_backAny (qvector *a, void *i);
 
-void insertInt (qvector *a, size_t pos, int loc[] ,size_t len);
-void insertChar (qvector *a,size_t pos, char loc[] ,size_t len);
-void insertDouble (qvector *a,size_t pos, double loc[] ,size_t len);
+bool insertAnyIrr (qvector *a, size_t pos, void *start, void *ends);
+bool insertAny (qvector *a, size_t pos, void *arr ,size_t len);
 
-bool resizeVec (qvector *a, size_t i);
+bool reserveVec (qvector *a, size_t i);
 bool pop_backVec (qvector *a);
 bool pop_frontVec (qvector *a);
 void eraseVec (qvector *a, size_t wstart, size_t wend);
-short emptyVec (qvector a);
+bool emptyVec (qvector a);
 void *vecStart (qvector a);
 void *vecEnd (qvector a);
 void destroyVec (qvector a);
 bool clearVec(qvector *a);
 
-qvector newVector (int type);
+//qvector newVector (int type);
 
+bool initNewVector(qvector *,int);
+qvector newVector (int type);
 qvector newLocVec (int type);
 void check_vector_get_init ();
 
 //////////// Await to process (Abandon?) //////////////
 
-size_t findVec (qvector a, size_t i, int type){
+size_t oldfindVec (qvector a, size_t i, int type){
     size_t n;
     for (n =0;n < a.size ; n++)
-        if ( getInt(a,n) == i)
+        if (getInt(a,n) == i)
             return n+1;
     return a.size;
 }
 
-size_t findVec_of (qvector a, size_t i, size_t start , size_t ends){
+size_t oldfindVec_of (qvector a, size_t i, size_t start , size_t ends){
     size_t n;
-    for (n =start;n < ends ; n++){
-        printf("Find %d | %d\n", i , getInt(a,n));
+    for (n =start;n < ends ; n++)
         if ( getInt(a,n) == i)
             return n;
-    }
     return a.size;
+}
+
+// New ones
+
+void* findVec (void* tar_start, void* tar_end, void* comp, int type){
+    size_t n;
+    for (n = 0; n < tar_end - (type + tar_start) ; n+= type)
+        if (!memcmp(tar_start + n, comp, type))
+            return tar_start + n;
+    return tar_end;
+}
+
+void* findVec_first_of (void* tar_start, void* tar_end, void* comp_start, void* comp_end){
+    size_t n, nsize = (int)(tar_end - (tar_start + (comp_start - comp_end)));
+    if ((tar_end-tar_start)>(comp_end-comp_start)){
+        for (n = 0; n <= nsize; n++)
+            if (!memcmp(tar_start + n, comp_start, comp_end - comp_start + 1))
+                //fprintf(output,"\nget %d %d %d %d\n",comp_end - comp_start, tar_end - tar_start,*(int*)comp_end,*(int*)comp_start);
+                return tar_start + n;
+        return tar_end;
+    } else return 0;
 }
 
 ///////////////////////////////////////////////////////
 
 #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
     struct global_vec {
+        long long localflag;
         qvector loc; // A vector for global use
         qvector loc_pos;
         qvector glb;
     };
-    struct global_vec qvec_glb;
+    struct global_vec qvec_glb = {0};
 
-void check_glb_vec_init(){
-    if (qvec_glb.loc.isInit == 0)
-        qvec_glb.loc = newVector(setInt);
-    if (qvec_glb.loc_pos.isInit == 0)
-        qvec_glb.loc_pos = newVector(setInt);
-    if (qvec_glb.glb.isInit == 0)
-         qvec_glb.glb = newVector(setInt);
-}
+    #define GLOBEL_VEC_AMOUNT 3
+
+    #define initglbVector(vec)\
+        do{\
+            vec.irr = malloc (sizeof(size_t));\
+            vec.typesize = sizeof(size_t);\
+            vec.capacity = 0;\
+            vec.size = 0;\
+            vec.isInit = 1;\
+            if (ENABLE_GLOBAL_CONTROL_VECTOR)\
+                push_backInt(&qvec_glb.glb,(size_t)vec.irr);\
+            if (DEBUG_BUILD)\
+                fprintf(output,"Global Control Vec registered: %d at %#010x\n",qvec_glb.glb.size-1,vec.irr);\
+        }while(0);
+
+    #define check_glb_vec_init()\
+        do{\
+            if (qvec_glb.glb.isInit == 0){\
+                if (DEBUG_BUILD)\
+                    output = fopen("QVEC_DEBUG_REPORT.txt","w");\
+                initglbVector (qvec_glb.glb);\
+                initglbVector (qvec_glb.loc);\
+                initglbVector (qvec_glb.loc_pos);\
+                qvec_glb.localflag = 0;\
+            }\
+        }while(0);
 
 #endif
 
-int getInt (qvector a, size_t i){
-    return *(a.irr + i*a.typesize/4);
-}
 
-int* getIrr (qvector a, size_t i){
-    return (a.irr + i*a.typesize/4);
-}
+#define GET_FUNC (a.irr + i * a.typesize/4)
 
+// Standard get function of v1.1.0 and above
 
-char getChar (qvector a, size_t i){
-    return *(a.irr + i * a.typesize/4);
-}
+//#define getIrr(a,i) (a.irr + i * a.typesize/4)
 
-double getDouble (qvector a, size_t i){
-    return *(a.irr + i * a.typesize/4);
-}
-
-void getAny (qvector a, void *b, size_t i){
-    memcpy(b, a.irr + i * a.typesize/4, a.typesize);
+size_t* getIrr (qvector a, size_t i){
+    size_t* hold = GET_FUNC;
+    if (a.isInit == 2)
+        destroyVec(a);
+    if (i < a.size)
+        return hold;
+    else
+        return 0;
 }
 
 qvector vget (qvector a, size_t i){
-    qvector b = newVector(a.type);
-    memcpy(&b, a.irr + i * a.typesize/4, a.typesize);
-    return b;
+    return *(qvector*)(getIrr (a,i));
 }
 
+// Old but still somewhat use-able get types
+
+int getInt (qvector a, size_t i){
+    return *(getIrr (a,i));
+}
+
+char getChar (qvector a, size_t i){
+    return *(getIrr (a,i));
+}
+
+double getDouble (qvector a, size_t i){
+    return *(getIrr (a,i));
+}
+
+void getAny (qvector a, void *b, size_t i){
+    memcpy(b, GET_FUNC, a.typesize);
+}
+
+#undef GET_FUNC
+
 bool copyVec (qvector *a, qvector b){
-    // Check of a = b type ?
-    bool retry;
-    clearVec(a);
-    retry = resizeVec(a,b.capacity);
-    if (!retry){
-        *a = newVector(a->type);
-        retry = resizeVec(a,b.capacity);
+    if(a->isInit){
+        size_t* hold = malloc (b.capacity * b.typesize);
+        if (!hold)
+            return 0;
+        else{
+            free(a->irr);
+            a->irr = hold;
+            #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+                if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)a->irr)
+                    *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)a->irr;
+            #endif
+        }
+    } else {
+        *a = newVector(b.typesize);
+        if (b.capacity > 0)
+            if(!(reserveVec(a,b.capacity)))
+                return 0;
     }
-    if (!retry) return 0;
-    size_t n;
-    for (n = 0; n < b.size; n++)
-        push_backAny(a,getIrr(b,n));
+    a->size = b.size;
+    memcpy(a->irr, b.irr, b.typesize * b.size);
+    return 1;
 }
 
 void toChar (qvector a, char i[]){
@@ -296,22 +381,26 @@ void printString (qvector a){
 
 bool push_backAny (qvector *a, void *i){
     if (a->size +1 > a->capacity) {
-        //int *trypush = realloc (a->irr, a->typesize * (a->size + 1));
-        int *trypush = realloc (a->irr, a->typesize * (a->capacity * set_qvec_growth.times + set_qvec_growth.add));
+        int *trypush = realloc (a->irr, a->typesize * CAP_GROWTH);
         if (!trypush)
             return 0;
         else
             a->irr = trypush;
-        // a->capacity++;
+            ++ a->size;
+        #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+            //printf("S \t%d \n\t%d\n \t%d\n",*(size_t*)getIrr(qvec_glb.glb,a->glb_loc),trypush,a->glb_loc);
+            //if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)trypush)
+                *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)trypush;
+        #endif
         a->capacity = a->capacity * set_qvec_growth.times + set_qvec_growth.add ;
-    }
-    a->size ++;
+    } else
+        ++ a->size;
     memcpy((a->irr + (a->size -1)*a->typesize/4), i, a->typesize);
     return 1;
 }
 
 bool push_backVec (qvector *a, qvector i){
-    qvector hold = newVector(i.typesize);
+    qvector hold = newVector (i.typesize);
     copyVec(&hold,i);
     return push_backAny (a, &hold);
 }
@@ -324,7 +413,7 @@ bool push_backChar (qvector *a, char i){
     int b = i;
     #if DEBUG_BUILD > 0
         push_backAny (a, &b);
-        printf("\n From %d ,%c At %d Size: %d Cap: %d Pushed: %c  which %c, Realloc %d",a->irr,*(a->irr),a->irr + (a->size -1),a->size,a->capacity,*(a->irr + (a->size -1)), i,(a->size +1));
+        fprintf(output,"\n From %d ,%c at %#010x Size: %d Cap: %d Pushed: %c  which %c, Realloc %d",a->irr,*(a->irr),a->irr + (a->size -1),a->size,a->capacity,*(a->irr + (a->size -1)), i,(a->size +1));
     #else
         return push_backAny (a, &b);
     #endif
@@ -337,72 +426,88 @@ bool push_backDouble (qvector *a, double i){
 
 bool push_backString (qvector *a, char i[],size_t len){
     size_t k,flag = 0;
-    if (a->type == setString && a->size > 0 && getChar(*a,a->size-1) == '\0')
+    if (a->size > 0 && getChar(*a,a->size-1) == '\0')
         pop_backVec(a);
     if (a->size + len > a->capacity) {
-        int *trypush = realloc (a->irr, a->typesize * (a->size +len));
+        #if STRING_EXPAND_TO_FIT > 0
+            int *trypush = realloc (a->irr, a->typesize * (a->size +len));
+        #else
+            while (a->size + len > a->capacity)
+                int *trypush = realloc (a->irr, a->typesize * CAP_GROWTH);
+        #endif
         if (!trypush)
             return 0;
         else
             a->irr = trypush;
+        #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+        if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)trypush)
+            *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)trypush;
+        #endif
         a->capacity += len;
     }
     for (k = 0; k < len;k++)
         flag += !(push_backChar(a,i[k]));
-    if (a->type == setString)
-        flag += !(push_backChar(a,'\0'));
+    flag += !(push_backChar(a,'\0'));
     return flag;
 }
 
-void insertInt (qvector *a, size_t pos, int loc[] ,size_t len){
-    size_t k , m = 0;
-    if ((len + a->size) > a->capacity)
-        resizeVec (a, a->capacity * set_qvec_growth.times + set_qvec_growth.add );
-    a->size += len;
-    for (k = a->size; k >= pos + len; k--)
-        *(a->irr + k) = *(a->irr + k - len);
-    for (k = pos; k < pos+len ; k++)
-        *(a->irr + k) = loc [m++];
+bool insertAnyIrr (qvector *a, size_t pos, void *start, void *ends){
+    return insertAny (a,pos,start,(ends-start+1)/a->typesize);
 }
 
-void insertChar (qvector *a,size_t pos, char loc[] ,size_t len){
+bool insertAny (qvector *a, size_t pos, void *arr ,size_t len){
     size_t k , m = 0;
-    if ((len + a->size) > a->capacity)
-        resizeVec (a, (a-> size + len));
+    while ((len + a->size) > a->capacity)
+        if (!(reserveVec (a, CAP_GROWTH)))
+            return 0;
+    memcpy(a->irr + pos + len, a->irr + pos, a->typesize * (a->size - pos + 1));
+    memcpy(a->irr + pos, arr , a->typesize * len);
     a->size += len;
-    for (k = a->size; k >= pos + len; k--)
-        *(a->irr + k) = *(a->irr + k - len);
-    for (k = pos; k < pos+len ; k++)
-        *(a->irr + k) = loc [m++];
-}
-
-void insertDouble (qvector *a,size_t pos, double loc[] ,size_t len){
-    size_t k , m = 0;
-    if ((len + a->size) > a->capacity)
-        resizeVec (a, (a-> size + len));
-    a->size += len;
-    for (k = a->size; k >= pos + len; k--)
-        *(a->irr + k) = *(a->irr + k - len);
-    for (k = pos; k < pos+len ; k++)
-        *(a->irr + k) = loc [m++];
+    return 1;
 }
 
 ///////////////////////////////////////////////////////
 
 bool pop_backVec (qvector *a){
-    if (a->size <0)
+    if (a->size <= 0)
         return 0;
     a->size --;
     return 1;
 }
 
 bool pop_frontVec (qvector *a){
-    if (a->size <0)
+    if (a->size <=0)
         return 0;
+    else if (a->size > 1)
+        memcpy(a->irr, a->irr + 1, a->typesize * (a->size-1));
     a->size --;
-    int n;
-    for (n = 0; n < a->size ; n++)
-        * (a->irr + n) = * (a->irr + n + 1);
+    return 1;
+}
+
+bool reserveVec (qvector *a, size_t i){
+    if (i > a->capacity){
+        int *trypush = realloc (a->irr,a->typesize * (a->capacity + i));
+        if (!trypush)
+            return 0;
+        #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+            if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)trypush)
+                *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)trypush;
+        #endif
+        a->irr = trypush;
+        a->capacity = i;
+    } else if (i < a->capacity){
+        int *trypush = realloc (a->irr,a->typesize * i +1);
+        if (!trypush)
+            return 0;
+        #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+            if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)trypush)
+                *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)trypush;
+        #endif
+        a->irr = trypush;
+        a->capacity = i;
+        a->size = i;
+    }
+    return 1;
 }
 
 bool resizeVec (qvector *a, size_t i){
@@ -410,15 +515,22 @@ bool resizeVec (qvector *a, size_t i){
         int *trypush = realloc (a->irr,a->typesize * (a->capacity + i));
         if (!trypush)
             return 0;
-        else
-            a->irr = trypush;
+        #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+            if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)trypush)
+                *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)trypush;
+        #endif
+        a->irr = trypush;
         a->capacity = i;
+        a->size = i;
     } else if (i < a->capacity){
         int *trypush = realloc (a->irr,a->typesize * i +1);
         if (!trypush)
             return 0;
-        else
-            a->irr = trypush;
+        #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+            if (*(size_t*)getIrr(qvec_glb.glb,a->glb_loc) != (size_t)trypush)
+                *(size_t*)getIrr(qvec_glb.glb,a->glb_loc) = (size_t)trypush;
+        #endif
+        a->irr = trypush;
         a->capacity = i;
         a->size = i;
     }
@@ -426,13 +538,11 @@ bool resizeVec (qvector *a, size_t i){
 }
 
 void eraseVec (qvector *a, size_t wstart, size_t wend){
-    size_t k;
-    for (k = wstart; (k + wstart - wend +1) < a->size ; k++)
-        *(a->irr + k) = *(a->irr + k + (wend - wstart +1));
+    memcpy(a->irr + wstart, a->irr + wend + 1, a->typesize * (a->size - wend));
     a->size -= (wend - wstart +1) ;
 }
 
-short emptyVec (qvector a){
+bool emptyVec (qvector a){
     if (a.size) return 0;
     else return 1;
 }
@@ -447,53 +557,91 @@ void *vecEnd (qvector a){
 
 void destroyVec (qvector a){
     free (a.irr);
+    #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+        #if DEBUG_BUILD > 0
+            fprintf(output,"\tDestroy (Manual) %d at %#010x\n",a.glb_loc,a.irr);
+        #endif
+    eraseVec(&qvec_glb.glb,a.glb_loc,a.glb_loc);
+
+    size_t n,m;
+    for (n = 0; n < qvec_glb.loc.size; n++)
+        if (getInt(qvec_glb.loc,n) == a.glb_loc){
+            fprintf(output,"\t\tRemove Local Register %d at %#010x\n",n,getInt(qvec_glb.loc,n));
+            eraseVec(&qvec_glb.loc,n,n);
+            for (m = 0; m < qvec_glb.loc.size; m++)
+                if (getInt(qvec_glb.loc,m)>a.glb_loc)
+                    *(size_t*)getIrr(qvec_glb.loc,m) -= 1;
+            for (m = 0; m < qvec_glb.loc_pos.size; m++){
+                if (getInt(qvec_glb.loc_pos,m) > n){
+                    *(size_t*)getIrr(qvec_glb.loc_pos,m) -= 1;
+                    fprintf(output,"\t\tRemove Local Position %d at %#010x",m,getInt(qvec_glb.loc_pos,m));
+                }
+            }
+            break;
+        }
+    #endif
 }
 
 bool clearVec (qvector *a){
-    return resizeVec (a, 0);
+    return reserveVec (a, 0);
 }
 
-bool initVector (qvector *vec, int type){
+bool setMultiVec (qvector *a,int type){
+    qvector hold = newVector (type);
+    push_backVec(a,hold);
+    destroyVec (hold);
+}
+
+bool initNewVector (qvector *vec, int type){
     #if ENABLE_GLOBAL_NICKNAME_STRUCT > 0
         check_vector_get_init ();
     #endif // ENABLE_GLOBAL_CONTROL_VECTOR
-    vec->type = type;
-    switch (type){
-        case setInt:
-            vec->irr = malloc (sizeof(int));
-            vec->typesize = sizeof (int);
-            break;
-        case setString:
-        case setChar:
-            vec->irr = malloc (4);
-            vec->typesize = 4;
-            break;
-        case setDouble:
-            vec->irr = malloc (sizeof (double));
-            vec->typesize = sizeof (double);
-            break;
-        case setVec:
-            vec->irr = malloc (sizeof(qvector));
-            vec->typesize = sizeof(qvector);
-            break;
-        default:
-            vec->irr = malloc (type);
-            vec->typesize = type;
-            break;
-    }
+    if (type % 4 != 0)
+        type += 4 - (type % 4);
+    vec->irr = malloc (type);
+    vec->typesize = type;
     vec->capacity = 0;
     vec->size = 0;
     vec->isInit = 1;
     #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
-        push_backInt(&qvec_glb.glb,(int)vec->irr);
+        check_glb_vec_init();
+        push_backInt(&qvec_glb.glb,(size_t)vec->irr);
+        vec->glb_loc = qvec_glb.glb.size - 1;
+    #endif
+    #if DEBUG_BUILD > 0
+        fprintf(output,"Created %d at %#010x\n",qvec_glb.glb.size-1,vec->irr);
+    #endif
+    if (vec->irr) return 1;
+    else return 0;
+}
+
+qvector newGlobalVector (int type){
+    qvector temp;
+    initNewVector (&temp,type);
+    return temp;
+}
+
+
+qvector newVector (int type){
+    #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+    if (qvec_glb.localflag)
+        return newLocVec(type);
+    else {
+    #endif
+        qvector temp;
+        initNewVector (&temp,type);
+        return temp;
+    #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
+    }
     #endif
 }
 
-qvector newVector (int type){
-    qvector temp;
-    initVector (&temp,type);
+qvector newString (){
+    qvector temp = newVector (sizeof(char));
     return temp;
 }
+
+
 
 #if ENABLE_GLOBAL_NICKNAME_STRUCT > 0
 
@@ -501,11 +649,11 @@ void check_vector_get_init (){
     if (!_int.get)
         _int.get = getInt;
         _int.push_back = push_backInt;
-        _int.insert = insertInt;
+        _int.insert = insertAny;
 
         _char.get = getChar;
         _char.push_back = push_backChar;
-        _char.insert = insertChar;
+        _char.insert = insertAny;
 
         _string.cat = toChar;
         _string.toChar = toChar;
@@ -515,15 +663,15 @@ void check_vector_get_init (){
 
         _double.get = getDouble;
         _double.push_back = push_backDouble;
-        _double.insert = insertDouble;
+        _double.insert = insertAny;
 
         _vec._int.get = getInt;
         _vec._int.push_back = push_backInt;
-        _vec._int.insert = insertInt;
+        _vec._int.insert = insertAny;
 
         _vec._char.get = getChar;
         _vec._char.push_back = push_backChar;
-        _vec._char.insert = insertChar;
+        _vec._char.insert = insertAny;
 
         _vec._string.cat = toChar;
         _vec._string.toChar = toChar;
@@ -533,13 +681,13 @@ void check_vector_get_init (){
 
         _vec._double.get = getDouble;
         _vec._double.push_back = push_backDouble;
-        _vec._double.insert = insertDouble;
+        _vec._double.insert = insertAny;
 
         _vec.get = vget;
         _vec.getAny = getAny;
         _vec.push_back = push_backVec;
         _vec.push_backAny = push_backAny;
-        _vec.resize = resizeVec;
+        _vec.resize = reserveVec;
         _vec.pop_back = pop_backVec;
         _vec.pop_front = pop_frontVec;
         _vec.erase = eraseVec;
@@ -548,6 +696,8 @@ void check_vector_get_init (){
         _vec.end = *vecEnd;
         _vec.clear = clearVec;
         _vec.copy = copyVec;
+        _vec.insert = insertAny;
+        _vec.insertIrr = insertAnyIrr;
 }
 
 #endif
@@ -557,82 +707,119 @@ void check_vector_get_init (){
 #if ENABLE_GLOBAL_CONTROL_VECTOR > 0
 
 void newLocal(){
-    // Builds a newLocal0
     check_glb_vec_init();
-    if (qvec_glb.loc.size < 1 && qvec_glb.loc_pos.size < 1)
-        push_backInt(&qvec_glb.loc_pos,0);
-    else if ((qvec_glb.loc.size - 1)!= getInt(qvec_glb.loc_pos,qvec_glb.loc_pos.size-1) && qvec_glb.loc.size > 0)
+    bool hold = 1;
+    if (qvec_glb.loc_pos.size > 0)
+        hold = ((qvec_glb.loc.size - 1)!= getInt(qvec_glb.loc_pos,qvec_glb.loc_pos.size-1));
+    if (qvec_glb.loc.size > 0 && hold){
         push_backInt(&qvec_glb.loc_pos,qvec_glb.loc.size - 1);
+        ++qvec_glb.localflag;
+    } else if (qvec_glb.loc.size == 0){
+        qvec_glb.localflag = 1;
+    }
 }
 
 void destroyLocal(){
-    size_t n, m;
     check_glb_vec_init();
-    if (qvec_glb.loc.size > 0) {
-        if (qvec_glb.loc_pos.size == 1){
-            for (n = qvec_glb.loc.size - 1 ; n >= getInt(qvec_glb.loc_pos,0)  ; n--){
-                free((int*) getInt(qvec_glb.loc,n));
-                pop_backVec (&qvec_glb.loc);
-            }
-            pop_backVec(&qvec_glb.loc_pos);
-        } else if (qvec_glb.loc_pos.size > 1){
-            n = qvec_glb.loc.size - 1;
-            m = getInt(qvec_glb.loc_pos,qvec_glb.loc_pos.size - 1);
-            for (; n > m; n--){
-                free((int*) getInt(qvec_glb.loc,n));
-                pop_backVec (&qvec_glb.loc);
-            }
-            pop_backVec(&qvec_glb.loc_pos);
+    size_t n, k;
+    if (qvec_glb.loc_pos.size > 0 && qvec_glb.loc.size > 0){
+        for (n = qvec_glb.loc.size - 1; n > getInt(qvec_glb.loc_pos,qvec_glb.loc_pos.size - 1); n--){
+            k = getInt(qvec_glb.loc,n);
+            #if DEBUG_BUILD > 0
+                fprintf(output,"Freed Local: %d at %#010x %d (A)\n",k,getInt(qvec_glb.glb,k),n);
+            #endif
+            free((size_t*)getInt(qvec_glb.glb,k));
+            eraseVec(&qvec_glb.glb,k,k);
+            pop_backVec (&qvec_glb.loc);
         }
+        #if DEBUG_BUILD > 0
+            fprintf(output,"\t\tLocal Position SIZE%d\n",qvec_glb.loc_pos.size);
+        #endif // DEBUG_BUILD
+        pop_backVec(&qvec_glb.loc_pos);
+        --qvec_glb.localflag;
+    }
+    else if (qvec_glb.loc.size > 0){
+        for (n = qvec_glb.loc.size; n > 0 ; n--){
+            k = getInt(qvec_glb.loc,n-1); // n -1 because n will break if size_t decrease to 0
+            #if DEBUG_BUILD > 0
+                fprintf(output,"Freed Local: %d at %#010x (B)\n",k,getInt(qvec_glb.glb,k));
+            #endif
+            free((size_t*)getInt(qvec_glb.glb,k));
+            eraseVec(&qvec_glb.glb,k,k);
+            pop_backVec (&qvec_glb.loc);
+        }
+        pop_backVec(&qvec_glb.loc_pos);
+        --qvec_glb.localflag;
+        #if DEBUG_BUILD > 0
+            fprintf(output,"\t\tLocal Position SIZE%d\n",qvec_glb.loc_pos.size);
+        #endif
+    }
+    // Bug caused here
+    if (qvec_glb.localflag == 0){
+        clearVec(&qvec_glb.loc);
+        clearVec(&qvec_glb.loc_pos);
     }
 }
 
 void destroyAllLocal() {
-    size_t n;
+    size_t n,k;
     check_glb_vec_init();
-    for (n = qvec_glb.loc.size - 1 ; n >= 0  ; n--){
-        free((int*) getInt(qvec_glb.loc,n));
+    for (n = qvec_glb.loc.size; n > 0 ; n--){
+        k = getInt(qvec_glb.loc,n-1); // n -1 because n will break if size_t decrease to 0
+        #if DEBUG_BUILD > 0
+            fprintf(output,"Freed All Local: %d at %#010x\n",k,getInt(qvec_glb.glb,k));
+        #endif
+        free((size_t*)getInt(qvec_glb.glb,k));
+        eraseVec(&qvec_glb.glb,k,k);
         pop_backVec (&qvec_glb.loc);
     }
+    qvec_glb.localflag = 0;
+    clearVec(&qvec_glb.loc);
+    clearVec(&qvec_glb.loc_pos);
 }
 
 void destroyAll() {
-    size_t n;
     check_glb_vec_init();
-    for (n = qvec_glb.loc.size - 1 ; n >= 0  ; n--){
-        free((int*) getInt(qvec_glb.loc,n));
-        pop_backVec (&qvec_glb.loc);
-    }
+    size_t chk = qvec_glb.glb.size;
+    #if DEBUG_BUILD > 0
+        fprintf(output,"#Destroy All");
+    #endif
+    if (chk > 1){
+        size_t n;
+        for (n = qvec_glb.glb.size - 1 ; n >= GLOBEL_VEC_AMOUNT  ; n--){
+            free((int*)getInt(qvec_glb.glb,n));
+            #if DEBUG_BUILD > 0
+                fprintf(output,"Destroy Global %d at %d\n",n,getInt(qvec_glb.glb,n));
+            #endif
+            pop_backVec (&qvec_glb.glb);
+        }
+        free(qvec_glb.loc.irr);
+        free(qvec_glb.loc_pos.irr);
+        free(qvec_glb.glb.irr);
+    } else if (chk > 0)
+        free(qvec_glb.glb.irr);
 }
 
 void assignLocal(qvector a){
     check_glb_vec_init();
-    push_backInt(&qvec_glb.loc,(int)a.irr);
-    push_backInt(&qvec_glb.glb,(int)a.irr);
+    push_backInt(&qvec_glb.loc,a.glb_loc);
 }
 
 #define newLocalVector newLocVector
 #define newLocVector newLocVec
 
 qvector newLocalVector (int type){
-    if (qvec_glb.loc_pos.size < 1)
-        newLocal();
+    if (qvec_glb.localflag == 0)
+        qvec_glb.localflag = 1;
     qvector temp;
-    initVector (&temp,type);
+    initNewVector (&temp,type);
     assignLocal(temp);
     return temp;
 }
 
 #endif // ENABLE_GLOBAL_CONTROL_VECTOR
 
-#ifndef QSTRING_H_INCLUDED
-    #if ENABLE_USE_OF_STRING > 0
-        qvector newString (){
-            qvector temp;
-            initVector (&temp,setString);
-            return temp;
-        }
-    #endif // ENABLE_USE_OF_STRING
-#endif // QSTRING_H_INCLUDED
+/******** UNDEF SO PPL CANT USEIT *********/
+#undef CAP_GROWTH
 
 #endif // CVECTOR_H_INCLUDED
